@@ -11,11 +11,16 @@ import "highlight.js/styles/github-dark.css";
 const MODELS = [
   { id: "deepseek/deepseek-chat", name: "DeepSeek V3", tag: "推荐" },
   { id: "deepseek/deepseek-r1", name: "DeepSeek R1", tag: "推理" },
-  // 部署到 Vercel 后取消下面的注释
-  // { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash", tag: "快" },
-  // { id: "openai/gpt-4o-mini", name: "GPT-4o Mini", tag: "性价比" },
-  // { id: "openai/gpt-4o", name: "GPT-4o", tag: "强" },
-  // { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet", tag: "强" },
+  { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash", tag: "快" },
+  { id: "google/gemini-2.5-pro-preview-05-06", name: "Gemini 2.5 Pro", tag: "强" },
+  { id: "openai/gpt-4o-mini", name: "GPT-4o Mini", tag: "性价比" },
+  { id: "openai/gpt-4o", name: "GPT-4o", tag: "强" },
+  { id: "openai/o3-mini", name: "o3 Mini", tag: "推理" },
+  { id: "anthropic/claude-sonnet-4", name: "Claude Sonnet 4", tag: "强" },
+  { id: "anthropic/claude-3.5-haiku", name: "Claude 3.5 Haiku", tag: "快" },
+  { id: "meta-llama/llama-4-maverick", name: "Llama 4 Maverick", tag: "开源" },
+  { id: "qwen/qwen-2.5-72b-instruct", name: "通义千问 72B", tag: "中文" },
+  { id: "mistralai/mistral-medium-3", name: "Mistral Medium 3", tag: "欧洲" },
 ];
 
 // ============ 类型定义 ============
