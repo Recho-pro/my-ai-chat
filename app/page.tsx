@@ -1,68 +1,141 @@
-// 网站首页 —— AI 聊天界面（美化版）
+// 网站首页 —— Claude 风格 AI 聊天界面
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import "highlight.js/styles/github-dark.css"; // 代码高亮主题
+import "highlight.js/styles/github-dark.css";
 
-// ============ 可用的模型列表 ============
-// 开发阶段先用 DeepSeek，部署到 Vercel 后再加其他模型
+// ============ 模型列表 ============
 const MODELS = [
-  { id: "deepseek/deepseek-chat", name: "DeepSeek V3", tag: "推荐·便宜" },
+  { id: "deepseek/deepseek-chat", name: "DeepSeek V3", tag: "推荐" },
   { id: "deepseek/deepseek-r1", name: "DeepSeek R1", tag: "推理" },
-  { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash", tag: "快" },
-  { id: "openai/gpt-4o-mini", name: "GPT-4o Mini", tag: "性价比" },
-  { id: "openai/gpt-4o", name: "GPT-4o", tag: "强" },
-  { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet", tag: "强" },
-  { id: "qwen/qwen-2.5-72b-instruct", name: "通义千问 72B", tag: "中文强" },
+  // 部署到 Vercel 后取消下面的注释
+  // { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash", tag: "快" },
+  // { id: "openai/gpt-4o-mini", name: "GPT-4o Mini", tag: "性价比" },
+  // { id: "openai/gpt-4o", name: "GPT-4o", tag: "强" },
+  // { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet", tag: "强" },
 ];
 
 // ============ 类型定义 ============
 interface Message {
   role: "user" | "assistant";
   content: string;
-  model?: string; // 记录这条消息用的哪个模型
+  model?: string;
+}
+
+interface Conversation {
+  id: string;
+  title: string;
+  messages: Message[];
+  model: string;
+  updatedAt: number;
 }
 
 // ============ 主页面 ============
 export default function Home() {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [model, setModel] = useState(MODELS[0].id);
   const [loading, setLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 自动滚动到底部
+  // 加载历史记录和主题
+  useEffect(() => {
+    const saved = localStorage.getItem("conversations");
+    if (saved) {
+      try { setConversations(JSON.parse(saved)); } catch { /* skip */ }
+    }
+    const savedTheme = localStorage.getItem("darkMode");
+    if (savedTheme !== null) setDarkMode(JSON.parse(savedTheme));
+  }, []);
+
+  // 保存历史记录
+  useEffect(() => {
+    if (conversations.length > 0) {
+      localStorage.setItem("conversations", JSON.stringify(conversations));
+    }
+  }, [conversations]);
+
+  // 保存主题
+  useEffect(() => {
+    localStorage.setItem("darkMode", JSON.stringify(darkMode));
+  }, [darkMode]);
+
+  // 自动滚动
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // 输入框自动调整高度
+  // 输入框自动高度
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = "auto";
-      textarea.style.height = Math.min(textarea.scrollHeight, 150) + "px";
+    const ta = textareaRef.current;
+    if (ta) {
+      ta.style.height = "auto";
+      ta.style.height = Math.min(ta.scrollHeight, 150) + "px";
     }
   }, [input]);
 
-  // 获取模型的显示名称
   const getModelName = useCallback(
-    (modelId: string) => MODELS.find((m) => m.id === modelId)?.name || modelId,
+    (id: string) => MODELS.find((m) => m.id === id)?.name || id,
     []
   );
+
+  // 保存对话
+  const saveConversation = useCallback(
+    (id: string, msgs: Message[], mdl: string) => {
+      setConversations((prev) => {
+        const title = msgs.find((m) => m.role === "user")?.content.slice(0, 30) || "新对话";
+        const conv: Conversation = { id, title, messages: msgs, model: mdl, updatedAt: Date.now() };
+        const idx = prev.findIndex((c) => c.id === id);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = conv;
+          return updated;
+        }
+        return [conv, ...prev];
+      });
+    },
+    []
+  );
+
+  const newChat = () => {
+    setActiveId(null);
+    setMessages([]);
+    setInput("");
+    setSidebarOpen(false);
+  };
+
+  const switchChat = (conv: Conversation) => {
+    setActiveId(conv.id);
+    setMessages(conv.messages);
+    setModel(conv.model);
+    setSidebarOpen(false);
+  };
+
+  const deleteChat = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConversations((prev) => prev.filter((c) => c.id !== id));
+    if (activeId === id) { setActiveId(null); setMessages([]); }
+  };
 
   // 发送消息
   const sendMessage = async () => {
     const trimmed = input.trim();
     if (!trimmed || loading) return;
 
-    const userMessage: Message = { role: "user", content: trimmed };
-    const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
+    const chatId = activeId || crypto.randomUUID();
+    if (!activeId) setActiveId(chatId);
+
+    const userMsg: Message = { role: "user", content: trimmed };
+    const newMsgs = [...messages, userMsg];
+    setMessages(newMsgs);
     setInput("");
     setLoading(true);
 
@@ -70,231 +143,212 @@ export default function Home() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: newMessages, model }),
+        body: JSON.stringify({ messages: newMsgs, model }),
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "请求失败");
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "请求失败");
       }
 
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let aiText = "";
-
-      setMessages([
-        ...newMessages,
-        { role: "assistant", content: "", model: model },
-      ]);
+      setMessages([...newMsgs, { role: "assistant", content: "", model }]);
 
       while (reader) {
         const { done, value } = await reader.read();
         if (done) break;
-
         const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
+        for (const line of chunk.split("\n")) {
           if (line.startsWith("data: ") && line !== "data: [DONE]") {
             try {
-              const data = JSON.parse(line.slice(6));
-              aiText += data.text;
-              setMessages((prev) => {
-                const updated = [...prev];
-                updated[updated.length - 1] = {
-                  role: "assistant",
-                  content: aiText,
-                  model: model,
-                };
-                return updated;
-              });
-            } catch {
-              // 跳过解析失败的行
-            }
+              aiText += JSON.parse(line.slice(6)).text;
+              setMessages([...newMsgs, { role: "assistant", content: aiText, model }]);
+            } catch { /* skip */ }
           }
         }
       }
+
+      const finalMsgs = [...newMsgs, { role: "assistant" as const, content: aiText, model }];
+      setMessages(finalMsgs);
+      saveConversation(chatId, finalMsgs, model);
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : "未知错误";
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: `❌ ${errMsg}` },
-      ]);
+      setMessages([...newMsgs, { role: "assistant", content: `❌ ${errMsg}` }]);
     } finally {
       setLoading(false);
     }
   };
 
-  // 按键处理
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
-  // 新建对话
-  const clearChat = () => {
-    setMessages([]);
-  };
+  // ============ 主题色 ============
+  const t = darkMode
+    ? {
+        bg: "bg-[#191919]", sidebar: "bg-[#141414]", sidebarBd: "border-[#2a2a2a]",
+        text: "text-[#ececec]", sub: "text-[#999]", muted: "text-[#666]",
+        input: "bg-[#2a2a2a] border-[#3a3a3a]", userBub: "bg-[#303030]",
+        btn: "bg-[#444] hover:bg-[#555]", accent: "bg-[#c96442] hover:bg-[#b55a3a]",
+        hov: "hover:bg-[#252525]", active: "bg-[#252525]",
+        card: "bg-[#212121] border-[#333]", codeBg: "prose-pre:bg-[#1a1a1a] prose-pre:border prose-pre:border-[#333]",
+        disBtn: "bg-[#333] text-[#666]",
+      }
+    : {
+        bg: "bg-[#f5f0ea]", sidebar: "bg-[#ebe5de]", sidebarBd: "border-[#d8d0c5]",
+        text: "text-[#2d2a26]", sub: "text-[#78716c]", muted: "text-[#a39e97]",
+        input: "bg-white border-[#d8d0c5]", userBub: "bg-[#e8e0d5]",
+        btn: "bg-[#d8d0c5] hover:bg-[#ccc3b5]", accent: "bg-[#c96442] hover:bg-[#b55a3a]",
+        hov: "hover:bg-[#e2dbd2]", active: "bg-[#e2dbd2]",
+        card: "bg-white border-[#e5ddd3]", codeBg: "prose-pre:bg-[#2d2a26] prose-pre:text-[#ececec]",
+        disBtn: "bg-[#e5ddd3] text-[#aaa]",
+      };
 
-  // ============ 页面渲染 ============
   return (
-    <div className="flex flex-col h-screen bg-[#0a0a12] text-gray-100">
-      {/* ====== 顶部栏 ====== */}
-      <header className="flex items-center justify-between px-4 py-3 bg-[#111120] border-b border-gray-800/50">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-            🤖 AI Chat
-          </h1>
-          <button
-            onClick={clearChat}
-            className="text-xs px-3 py-1 rounded-lg bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
-          >
+    <div className={`flex h-screen ${t.bg} ${t.text} transition-colors duration-200`}>
+      {/* 侧边栏遮罩 (手机) */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 bg-black/40 z-20 md:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      {/* ====== 侧边栏 ====== */}
+      <aside className={`fixed md:relative z-30 h-full w-64 ${t.sidebar} border-r ${t.sidebarBd} flex flex-col transition-transform duration-200 ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
+        <div className={`p-3 border-b ${t.sidebarBd}`}>
+          <button onClick={newChat} className={`w-full py-2.5 px-3 rounded-lg text-sm font-medium ${t.accent} text-white transition-colors`}>
             + 新对话
           </button>
         </div>
 
-        {/* 模型选择 */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500 hidden sm:inline">模型：</span>
+        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+          {conversations.length === 0 && (
+            <p className={`text-xs ${t.muted} text-center mt-8`}>还没有对话记录</p>
+          )}
+          {conversations
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .map((conv) => (
+              <div
+                key={conv.id}
+                onClick={() => switchChat(conv)}
+                className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer text-sm transition-colors ${activeId === conv.id ? t.active : t.hov}`}
+              >
+                <span className="flex-1 truncate">{conv.title}</span>
+                <button
+                  onClick={(e) => deleteChat(conv.id, e)}
+                  className={`opacity-0 group-hover:opacity-100 ${t.muted} hover:text-red-400 transition-all text-xs`}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+        </div>
+
+        <div className={`p-3 border-t ${t.sidebarBd} space-y-2`}>
           <select
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            className="bg-gray-800/80 text-gray-200 text-sm px-3 py-1.5 rounded-lg border border-gray-700/50 outline-none cursor-pointer hover:border-gray-600 transition-colors"
+            className={`w-full text-sm px-3 py-2 rounded-lg border outline-none cursor-pointer ${t.input} ${t.text}`}
           >
             {MODELS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name} {m.tag ? `· ${m.tag}` : ""}
-              </option>
+              <option key={m.id} value={m.id}>{m.name} · {m.tag}</option>
             ))}
           </select>
+          <button onClick={() => setDarkMode(!darkMode)} className={`w-full py-2 px-3 rounded-lg text-sm ${t.btn} ${t.text} transition-colors`}>
+            {darkMode ? "☀️ 浅色" : "🌙 深色"}
+          </button>
         </div>
-      </header>
+      </aside>
 
-      {/* ====== 消息区域 ====== */}
-      <main className="flex-1 overflow-y-auto">
-        {/* 欢迎页 */}
-        {messages.length === 0 && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center px-4">
-              <div className="text-6xl mb-6">🤖</div>
-              <h2 className="text-2xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                你好！我是 AI 助手
-              </h2>
-              <p className="text-gray-500 mb-8">
-                选择模型，开始对话。支持多种 AI 模型随时切换。
-              </p>
-              {/* 快捷提示 */}
-              <div className="flex flex-wrap justify-center gap-2">
-                {["帮我写一首诗", "解释量子计算", "用Python写冒泡排序"].map(
-                  (hint) => (
+      {/* ====== 主区域 ====== */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className={`flex items-center px-4 py-3 border-b ${t.sidebarBd}`}>
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="md:hidden mr-3 text-lg">☰</button>
+          <span className={`text-sm ${t.sub}`}>{getModelName(model)}</span>
+        </header>
+
+        <main className="flex-1 overflow-y-auto">
+          {messages.length === 0 && (
+            <div className="flex items-center justify-center h-full px-4">
+              <div className="text-center max-w-md">
+                <h2 className="text-2xl font-semibold mb-2">EchoProAI</h2>
+                <p className={`${t.sub} mb-8`}>选择模型，开始对话</p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {["帮我写一首诗", "解释量子计算", "写一段Python代码"].map((hint) => (
                     <button
                       key={hint}
                       onClick={() => setInput(hint)}
-                      className="text-sm px-4 py-2 rounded-xl bg-gray-800/50 text-gray-400 border border-gray-700/50 hover:border-purple-500/50 hover:text-gray-200 transition-all"
+                      className={`text-sm px-4 py-2 rounded-full border ${t.card.split(" ")[1] || t.sidebarBd.split(" ")[0]} ${t.hov} ${t.sub} transition-colors`}
                     >
                       {hint}
                     </button>
-                  )
-                )}
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* 消息列表 */}
-        {messages.length > 0 && (
-          <div className="max-w-3xl mx-auto p-4 space-y-6">
-            {messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div className="max-w-[85%]">
-                  {/* AI 消息头部：显示模型名 */}
-                  {msg.role === "assistant" && msg.model && (
-                    <div className="text-xs text-gray-500 mb-1 ml-1">
-                      {getModelName(msg.model)}
+          {messages.length > 0 && (
+            <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+              {messages.map((msg, i) => (
+                <div key={i}>
+                  {msg.role === "user" ? (
+                    <div className="flex justify-end">
+                      <div className={`max-w-[80%] px-4 py-3 rounded-2xl rounded-br-sm ${t.userBub}`}>
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                      </div>
                     </div>
-                  )}
-                  <div
-                    className={`px-4 py-3 rounded-2xl ${
-                      msg.role === "user"
-                        ? "bg-blue-600 text-white rounded-br-md"
-                        : "bg-[#1a1a2e] text-gray-100 border border-gray-800/50 rounded-bl-md"
-                    }`}
-                  >
-                    {msg.role === "assistant" ? (
-                      <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-[#0d0d1a] prose-pre:border prose-pre:border-gray-800/50 prose-code:text-purple-300">
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          rehypePlugins={[rehypeHighlight]}
-                        >
+                  ) : (
+                    <div>
+                      {msg.model && (
+                        <p className={`text-xs ${t.muted} mb-1.5 ml-1`}>{getModelName(msg.model)}</p>
+                      )}
+                      <div className={`prose ${darkMode ? "prose-invert" : ""} prose-sm max-w-none leading-relaxed ${t.codeBg} prose-code:text-[#c96442] prose-p:my-2 prose-headings:my-3`}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
                           {msg.content || "⏳ 思考中..."}
                         </ReactMarkdown>
                       </div>
-                    ) : (
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {/* 加载动画 */}
-            {loading &&
-              messages.length > 0 &&
-              messages[messages.length - 1]?.role === "assistant" &&
-              messages[messages.length - 1]?.content === "" && (
-                <div className="flex justify-start">
-                  <div className="bg-[#1a1a2e] border border-gray-800/50 px-4 py-3 rounded-2xl rounded-bl-md">
-                    <div className="flex gap-1">
-                      <span
-                        className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "0ms" }}
-                      />
-                      <span
-                        className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "150ms" }}
-                      />
-                      <span
-                        className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "300ms" }}
-                      />
                     </div>
-                  </div>
+                  )}
+                </div>
+              ))}
+
+              {loading && messages.length > 0 && messages[messages.length - 1]?.content === "" && (
+                <div className="flex gap-1.5 py-2">
+                  {[0, 1, 2].map((i) => (
+                    <span key={i} className={`w-1.5 h-1.5 rounded-full ${darkMode ? "bg-[#888]" : "bg-[#999]"} animate-bounce`} style={{ animationDelay: `${i * 150}ms` }} />
+                  ))}
                 </div>
               )}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-      </main>
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+        </main>
 
-      {/* ====== 输入区域 ====== */}
-      <footer className="p-3 sm:p-4 bg-[#111120] border-t border-gray-800/50">
-        <div className="max-w-3xl mx-auto flex gap-2 items-end">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"
-            rows={1}
-            className="flex-1 bg-[#1a1a2e] text-gray-100 px-4 py-3 rounded-xl border border-gray-700/50 outline-none resize-none placeholder-gray-600 focus:border-purple-500/50 transition-colors"
-          />
-          <button
-            onClick={sendMessage}
-            disabled={loading || !input.trim()}
-            className="px-4 sm:px-5 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium hover:from-blue-500 hover:to-purple-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-          >
-            {loading ? "⏳" : "发送"}
-          </button>
-        </div>
-        <p className="text-center text-xs text-gray-600 mt-2">
-          由 OpenRouter 提供多模型支持
-        </p>
-      </footer>
+        <footer className="px-4 pb-4 pt-2">
+          <div className={`max-w-2xl mx-auto flex gap-2 items-end p-2 rounded-2xl border ${t.card}`}>
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="输入消息..."
+              rows={1}
+              className={`flex-1 px-3 py-2 bg-transparent outline-none resize-none text-sm leading-relaxed ${t.text} placeholder-[#888]`}
+            />
+            <button
+              onClick={sendMessage}
+              disabled={loading || !input.trim()}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                input.trim() && !loading ? `${t.accent} text-white` : `${t.disBtn} cursor-not-allowed`
+              }`}
+            >
+              {loading ? "..." : "↑"}
+            </button>
+          </div>
+          <p className={`text-center text-xs ${t.muted} mt-2`}>EchoProAI · 多模型 AI 助手</p>
+        </footer>
+      </div>
     </div>
   );
 }
