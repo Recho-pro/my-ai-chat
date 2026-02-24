@@ -10,8 +10,13 @@ import "highlight.js/styles/github-dark.css"; // 代码高亮主题
 // ============ 可用的模型列表 ============
 // 开发阶段先用 DeepSeek，部署到 Vercel 后再加其他模型
 const MODELS = [
-  { id: "deepseek/deepseek-chat", name: "DeepSeek V3", tag: "推荐" },
+  { id: "deepseek/deepseek-chat", name: "DeepSeek V3", tag: "推荐·便宜" },
   { id: "deepseek/deepseek-r1", name: "DeepSeek R1", tag: "推理" },
+  { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash", tag: "快" },
+  { id: "openai/gpt-4o-mini", name: "GPT-4o Mini", tag: "性价比" },
+  { id: "openai/gpt-4o", name: "GPT-4o", tag: "强" },
+  { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet", tag: "强" },
+  { id: "qwen/qwen-2.5-72b-instruct", name: "通义千问 72B", tag: "中文强" },
 ];
 
 // ============ 类型定义 ============
