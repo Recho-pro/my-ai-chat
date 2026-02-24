@@ -1,55 +1,63 @@
-// 这个文件是后端 API 路由
-// 作用：接收前端发来的消息，转发给 OpenRouter，把 AI 的回复"流式"返回给前端
-
+// 后端 API 路由 —— 支持文本和图片消息
 import OpenAI from "openai";
 
-// 创建 OpenAI 客户端（但指向 OpenRouter 的地址）
 const client = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1", // OpenRouter 的接口地址
-  apiKey: process.env.OPENROUTER_API_KEY,   // 从环境变量读取你的 Key
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-// 处理 POST 请求（前端发消息过来就是 POST 请求）
 export async function POST(req: Request) {
   try {
-    // 1. 从前端发来的数据中，取出消息列表和模型名称
     const { messages, model } = await req.json();
 
-    // 2. 调用 OpenRouter（就像调用 OpenAI 一样）
-    const response = await client.chat.completions.create({
-      model: model || "deepseek/deepseek-chat", // 默认用 DeepSeek（便宜好用）
-      messages: messages,                        // 用户和 AI 的对话历史
-      stream: true,                              // 开启流式输出（一个字一个字返回）
+    // 把前端的消息格式转成 OpenAI API 格式
+    // 如果消息包含图片，需要用 content 数组格式
+    const formattedMessages = messages.map((msg: { role: string; content: string; images?: string[] }) => {
+      if (msg.images && msg.images.length > 0) {
+        // 带图片的消息：用数组格式
+        const content: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
+          { type: "text", text: msg.content || "请分析这张图片" },
+        ];
+        for (const img of msg.images) {
+          content.push({
+            type: "image_url",
+            image_url: { url: img }, // base64 格式: data:image/xxx;base64,...
+          });
+        }
+        return { role: msg.role, content };
+      }
+      // 普通文本消息
+      return { role: msg.role, content: msg.content };
     });
 
-    // 3. 把 AI 的回复变成"流"，一点一点传给前端
+    const response = await client.chat.completions.create({
+      model: model || "deepseek/deepseek-chat",
+      messages: formattedMessages,
+      stream: true,
+    });
+
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        // 遍历 AI 返回的每一小块内容
         for await (const chunk of response) {
           const text = chunk.choices[0]?.delta?.content || "";
           if (text) {
-            // 按照 SSE（Server-Sent Events）格式发送
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
           }
         }
-        // 发送结束信号
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       },
     });
 
-    // 4. 返回流式响应
     return new Response(stream, {
       headers: {
-        "Content-Type": "text/event-stream",      // 告诉浏览器这是流式数据
-        "Cache-Control": "no-cache",               // 不要缓存
-        Connection: "keep-alive",                  // 保持连接
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
       },
     });
   } catch (error) {
-    // 如果出错了，返回错误信息
     console.error("API 路由出错：", error);
     return new Response(
       JSON.stringify({ error: "AI 请求失败，请稍后重试" }),
